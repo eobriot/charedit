@@ -4,15 +4,24 @@
 	!to "charedit.prg", cbm
 	
 ;;; kernal calls
-chrout 	=	$ffd2
-plot	=	$fff0
-getin	=	$ffe4
+	chrout 	=	$ffd2
+	plot	=	$fff0
+	getin	=	$ffe4
 
 	
+;;;  Page 0 vars defined here so that acme doesn't complain
+	wrk1		= $fb
+	wrk2 		= $fc	      ;always good to have a page 0
 	
 main	jsr clrscr
-	jsr dspptn
-	jsr wait
+	jsr stpscrn
+	;; 	jsr wait
+.loop
+	jsr crsor
+	lda status
+	cmp #$ff		;quitting?
+	bne .loop
+	jsr clrscr
 	rts
 
 ;;; routine to clear screen
@@ -24,95 +33,155 @@ wait	jsr getin
 	cmp #0
 	beq wait
 	rts
+;;; print message
+;;; wrk1 and wrk2 points to lower and upper byte of msg
+;;; msg ends with 0
+prtmsg
+	ldy #0
+-	lda (wrk1), y
+	beq +
+	jsr chrout
+	iny
+	jmp -
++
+	rts
+	
+;;; Initial screen display
+stpscrn
+	ldx #0			;col number
+	lda #32			;space
+out	sta 1024,x
+	sta 1064,x
+	sta 1104,x
+	sta 1144,x
+	sta 1184,x
+	sta 1224,x
+	sta 1264,x
+	sta 1304,x
+	inx
+	cpx #8
+	bne out
+	ldx #9			;vertical border
+	lda #101
+	sta 1024,x
+	sta 1064,x
+	sta 1104,x
+	sta 1144,x
+	sta 1184,x
+	sta 1224,x
+	sta 1264,x
+	sta 1304,x
+	ldx #0			;horizontal border
+	lda #99
+-	sta 1344,x
+	inx
+	cpx #9
+	bne -
+	ldx #10			;print a dummy message, should be an helpful one
+	ldy #0
+	clc
+	jsr plot
+	lda #<usage
+	sta wrk1
+	lda #>usage
+	sta wrk2
+	jsr prtmsg
+	rts
+	
+;;; routine to handle cursor movement and display
+crsor
+	lda cx
+	sta dcx
+	lda cy
+	sta dcy			;save old cursor values
+.wait
+	jsr getin
+	cmp #0
+	beq .wait		;no key?
+	cmp #17			;upkey
+	beq .up
+	cmp #29			;right key
+	beq .right
+	cmp #145		;down key
+	beq .down
+	cmp #157		;left key
+	beq .left
+	cmp #81			;quit?
+	beq .quit
+	jmp .wait
+.up
+	lda cy
+	cmp #0			;are we at row 0?
+	beq +
+	dec cy
++
+	jmp .end
+.right
+	lda cx
+	cmp #7			;are we at col 7?
+	beq +
+	inc cx
++
+	jmp .end
+.down
+	lda cy
+	cmp #7			;are we at row 7?
+	beq +
+	inc cy
++
+	jmp .end
+.left
+	lda cx
+	cmp #0			;are we at col 0?
+	beq +
+	dec cx
++
+	jmp .end
+.quit
+	lda #$ff
+	sta status
+.end
+	jsr dspcsr
+	rts
 
-tstbit 				;need to load a with the value to test
-	tay
-	and chrptn, x
-	beq -			;bit is of
-	lda #113
-	jmp +
--	lda #32
-+				; is cursor on this spot?
-	pha
-	tya			; get back the initial A value
-	cmp cx
-	bne prt
-	txa			;x is ok, and y?
-	cmp cy
-	bne prt
-	pla			;got it!
-	ora #$80		; reverse video
-prt	pla
-prt2	jsr chrout
+;;;  clear the cursor position and
+;;;  Display the cursor based on cx and cy
+dspcsr
+	;; first we clean
+	lda dcy			;fetch the row
+	lsr			;multiplty it by 2 forindex
+	tax
+	lda scrlines,x		;low byte
+	sta wrk1
+	inx
+	lda scrlines,x		;high byte
+	sta wrk2
+	ldy cx			;fetch col
+	lda (wrk1),y
+	and #$7f		;reverse videao
+	sta (wrk1),y
+	;;  now we put the new position
+	lda cy			;fetch the row
+	lsr			;multiplty by 2 for index in 16 bit table
+	tax
+	lda scrlines,x		;low byte
+	sta wrk1
+	inx
+	lda scrlines,x		;high byte
+	sta wrk2
+	ldy cx			;fetch the row
+	lda (wrk1), y		;fetch the value
+	ora #$80
+	sta (wrk1), y		;put the new value
 	rts
-	
-!macro testbit .val{
-	lda #.val
-	jsr tstbit
-	}
-	
-dspptn
-	ldx #0
-	ldy #0
-	clc
-	jsr plot		;top left corner of screen
-	stx row
-dorow	
-	+testbit 1		;Test each bit of row.
-	+testbit 2
-	+testbit 4
-	+testbit 8
-	+testbit 16
-	+testbit 32
-	+testbit 64
-	+testbit 128
-	inc row
-	ldx row
-	cpx #8			;are we done?
-	beq exit
-	ldy #0
-	clc
-	jsr plot		;advance to next line
-	jmp dorow
-exit
-	rts
-	
-	
-;;; routine to display char pattern on screen
-;; dspptn	ldx #0
-;; 	ldy #0
-;; 	clc
-;; 	jsr plot		;Starting top left corner
-;; 	stx row			;first row
-;; dorow	lda chrptn,x		;get byte for row
-;; 	sta wrk			
-;; nxt	lsr wrk			;get bit
-;; 	bcs on
-;; 	lda #32			; bit off
-;; 	jsr chrout
-;; 	jmp +			; jmp to next row?
-;; on	lda #113		;bit on
-;; 	jsr chrout
-;; +	iny			; get next bit
-;; 	cpy #8			; are we done?
-;; 	beq nxtrow
-;; 	jmp nxt			;next char
-;; nxtrow	inc row
-;; 	ldy row			;plot on next row	
-;; 	ldx #0
-;; 	clc
-;; 	jsr plot
-;; 	cpy #8			;are we done for all the row?
-;; 	beq exit
-;; 	tya
-;; 	tax			;set index of row
-;; 	ldy #0			;ready for first byte
-;; 	jmp dorow
-;; exit	rts
-	
 ;;; vars
-chrptn	!byte $4,0,$ff,0,0,0,0,0
-wrk	!byte 0
-row	!byte 0			;which row is being drawn
-cx	!byte 1			; position of cursor. X is 1, 2 4, 8 ...
-cy 	!byte 0
+chrptn		!byte $4,0,$ff,0,0,0,0,0
+scrlines 	!word 1024,1064,1104,1144,1184,1224,1264,1304 ;begining of the 8 firsts screen lines
+row		!byte 0			;which row is being drawn
+cx		!byte 0			; position of cursor in row/col
+cy 		!byte 0
+dcx		!byte 0			;old values of cursor
+dcy		!byte 0
+usage		!pet "it is a char editor"
+		!byte 0
+status		!byte 0
