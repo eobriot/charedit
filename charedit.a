@@ -23,7 +23,11 @@ main	jsr clrscr
 	bne .loop
 	jsr clrscr
 	lda #0
-	sta status		;quit cleanly?
+	sta status		;quit cleanly
+	sta cy
+	sta cx
+	sta dcy
+	sta dcx
 	rts
 
 ;;; routine to clear screen
@@ -120,14 +124,14 @@ crsor
 	jmp .end
 .right
 	lda cx
-	cmp #7			;are we at col 7?
+	cmp #8			;are we at col 7?
 	beq +
 	inc cx
 +
 	jmp .end
 .down
 	lda cy
-	cmp #7			;are we at row 7?
+	cmp #8			;are we at row 7?
 	beq +
 	inc cy
 +
@@ -151,7 +155,7 @@ crsor
 dspcsr
 	;; first we clean
 	lda dcy			;fetch the row
-	lsr			;multiplty it by 2 forindex
+	ror			;multiplty it by 2 forindex
 	tax
 	lda scrlines,x		;low byte
 	sta wrk1
@@ -164,7 +168,7 @@ dspcsr
 	sta (wrk1),y
 	;;  now we put the new position
 	lda cy			;fetch the row
-	lsr			;multiplty by 2 for index in 16 bit table
+	ror			;multiplty by 2 for index in 16 bit table
 	tax
 	lda scrlines,x		;low byte
 	sta wrk1
