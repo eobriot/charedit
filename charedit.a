@@ -4,19 +4,23 @@
 	!to "charedit.prg", cbm
 	
 ;;; kernal calls
-	chrout 	=	$ffd2
-	plot	=	$fff0
-	getin	=	$ffe4
+	chrout 	= $ffd2
+	plot	= $fff0
+	getin	= $ffe4
 
 	
 ;;;  Page 0 vars defined here so that acme doesn't complain
-	wrk1		= $fb
-	wrk2 		= $fc	      ;always good to have a page 0
+	wrk1	= $fb
+	wrk2 	= $fc	      	;always good to have a page 0
+	wrk3	= $fd
+
+;;; some constants
+	nbcol	= 7
+	nbrow	= 7
 	
-main	jsr clrscr
+main:	jsr clrscr
 	jsr stpscrn
-	;; 	jsr wait
-.loop
+.loop:
 	jsr crsor
 	lda status
 	cmp #$ff		;quitting?
@@ -31,18 +35,18 @@ main	jsr clrscr
 	rts
 
 ;;; routine to clear screen
-clrscr 	lda #$93
+clrscr:	lda #$93
 	jsr chrout
 	rts
 
-wait	jsr getin
+wait:	jsr getin
 	cmp #0
 	beq wait
 	rts
 ;;; print message
 ;;; wrk1 and wrk2 points to lower and upper byte of msg
 ;;; msg ends with 0
-prtmsg
+prtmsg:	
 	ldy #0
 -	lda (wrk1), y
 	beq +
@@ -53,10 +57,10 @@ prtmsg
 	rts
 	
 ;;; Initial screen display
-stpscrn
+stpscrn:	
 	ldx #0			;col number
 	lda #32			;space
-out	sta 1024,x
+out:	sta 1024,x
 	sta 1064,x
 	sta 1104,x
 	sta 1144,x
@@ -65,9 +69,9 @@ out	sta 1024,x
 	sta 1264,x
 	sta 1304,x
 	inx
-	cpx #8
+	cpx #nbcol
 	bne out
-	ldx #9			;vertical border
+	ldx #nbrow + 1		;vertical border
 	lda #101
 	sta 1024,x
 	sta 1064,x
@@ -81,7 +85,7 @@ out	sta 1024,x
 	lda #99
 -	sta 1344,x
 	inx
-	cpx #9
+	cpx #nbcol + 1
 	bne -
 	ldx #10			;print a dummy message, should be an helpful one
 	ldy #0
@@ -92,15 +96,45 @@ out	sta 1024,x
 	lda #>usage
 	sta wrk2
 	jsr prtmsg
+	ldx #11			;debug : show coordinates of cursor
+	ldy #0
+	jsr plot
+	lda #<ccx		;cx
+	sta wrk1
+	lda #>ccx
+	sta wrk2
+	jsr prtmsg
+	ldy #6			;cy
+	jsr plot
+	lda #<ccy
+	sta wrk1
+	lda #>ccy
+	sta wrk2
+	jsr prtmsg
+	ldx #12			;dx
+	ldy #0
+	jsr plot
+	lda #<cdx
+	sta wrk1
+	lda #>cdx
+	sta wrk2
+	jsr prtmsg
+	ldy #6			;dy
+	jsr plot
+	lda #<cdy
+	sta wrk1
+	lda #>cdy
+	sta wrk2
+	jsr prtmsg
 	rts
 	
 ;;; routine to handle cursor movement and display
-crsor
+crsor:	
 	lda cx
 	sta dcx
 	lda cy
 	sta dcy			;save old cursor values
-.wait
+.wait:
 	jsr getin
 	cmp #0
 	beq .wait		;no key?
@@ -112,50 +146,73 @@ crsor
 	beq .up
 	cmp #157		;left key
 	beq .left
+	cmp #32			;space?
+	beq .space
 	cmp #81			;quit?
 	beq .quit
 	jmp .wait
-.up
+.up:
 	lda cy
 	cmp #0			;are we at row 0?
 	beq +
+	clc
 	dec cy
 +
 	jmp .end
-.right
+.right:
 	lda cx
-	cmp #8			;are we at col 7?
+	cmp #nbcol		;are we at col 7?
 	beq +
+	clc
 	inc cx
 +
 	jmp .end
-.down
+.down:
 	lda cy
-	cmp #8			;are we at row 7?
+	cmp #nbrow		;are we at row 7?
 	beq +
+	clc
 	inc cy
 +
 	jmp .end
-.left
+.left:
 	lda cx
 	cmp #0			;are we at col 0?
 	beq +
+	clc
 	dec cx
 +
 	jmp .end
-.quit
+.space:	jsr mark
+	jmp .end
+.quit:
 	lda #$ff
 	sta status
-.end
+.end:
 	jsr dspcsr
+	jsr prtcrd
 	rts
 
-;;;  clear the cursor position and
-;;;  Display the cursor based on cx and cy
-dspcsr
-	;; first we clean
-	lda dcy			;fetch the row
-	ror			;multiplty it by 2 forindex
+;;; Routine to print a half byte in hexa mode
+;;; Half byte is in a
+;;; print to current cursor position
+prtdgt:	cmp #10			;is the half byte <10?
+	bmi .dec
+	sbc #10			;no, we substract 10 and add it to 'A', then print
+	adc #$40		;"A"
+	jmp .exit
+.dec:	adc #$30
+.exit:
+	jsr chrout
+	rts
+
+;;; This routine toggle a dot under the cursor
+
+mark:
+	;; fetch the data under the cursor
+	lda cy			;fetch the row
+	clc			;fucking carry.
+	rol			;multiplty it by 2 forindex
 	tax
 	lda scrlines,x		;low byte
 	sta wrk1
@@ -163,12 +220,57 @@ dspcsr
 	lda scrlines,x		;high byte
 	sta wrk2
 	ldy cx			;fetch col
+	lda (wrk1),y		;the data!
+;;;  warning : as we are marking under the cursor, we have to AND $7F
+	and #$7f
+	cmp #32			;is it a space?
+	beq .set
+	lda #32			;no, so we toggle off
+	jmp .ext
+.set:	lda #81			;yes, we toggle on
+.ext:
+	sta (wrk1),y
+	lda cy			;debug : convert value of current line
+	jsr cvrt		; in wrk3 we have the value of the line in hexa
+	ldx cy
+	ldy #10
+	jsr plot
+	lda wrk3		;print high nibble
+	ror
+	ror
+	ror
+	ror
+	and #15
+	jsr prtdgt
+	ldx cy
+	ldy #11
+	jsr plot
+	lda wrk3
+	and #15			;and now low nibble
+	jsr prtdgt
+	lda #0			;let's reset wrk3
+	sta wrk3
+	rts
+	
+;;;  clear the cursor position and
+;;;  Display the cursor based on cx and cy
+dspcsr:	
+	;; first we clean
+	lda dcy			;fetch the row
+	rol			;multiplty it by 2 forindex
+	tax
+	lda scrlines,x		;low byte
+	sta wrk1
+	inx
+	lda scrlines,x		;high byte
+	sta wrk2
+	ldy dcx			;fetch col
 	lda (wrk1),y
-	and #$7f		;reverse videao
+	and #$7f		;reverse video
 	sta (wrk1),y
 	;;  now we put the new position
 	lda cy			;fetch the row
-	ror			;multiplty by 2 for index in 16 bit table
+	rol			;multiply by 2 for index in 16 bit table
 	tax
 	lda scrlines,x		;low byte
 	sta wrk1
@@ -180,14 +282,73 @@ dspcsr
 	ora #$80
 	sta (wrk1), y		;put the new value
 	rts
+
+	;; we print the coordinates
+prtcrd:	
+	ldx #11			;cx
+	ldy #4
+	jsr plot
+	lda cx
+	jsr prtdgt
+	ldx #11
+	ldy #9			;cy
+	jsr plot
+	lda cy
+	jsr prtdgt
+	ldx #12			;dx
+	ldy #4
+	jsr plot
+	lda dcx
+	jsr prtdgt
+	ldx #12
+	ldy #9			;dy
+	jsr plot
+	lda dcy
+	jsr prtdgt
+	rts
+;;; This routine converts a row of dot to a 8 bits numbers
+;;; in entry A holds the line of pattern to convert
+cvrt
+	clc
+	rol			;*2 for index to 16 bits table
+	tax
+	lda scrlines,x
+	sta wrk1
+	inx
+	lda scrlines,x
+	sta wrk2		;now in wrk we have the adress of screen line
+	ldy #nbcol
+-	lda (wrk1),y		;first char
+	and #$7f		;take care of eventual cursor at position
+	clc
+	cmp #$51			;is it on?
+	bne .off
+	lda wrk3		;it is on, use the mask to add value
+	ora mask,y
+	sta wrk3
+	jmp +
+.off
+	lda wrk3		;should clear the value ...
+	and mask2,y
+	sta wrk3
++	dey
+	bne -			;last col? (in fact first as we are going in reverse)
+	lda wrk3
+	rts
+	
 ;;; vars
 chrptn		!byte $4,0,$ff,0,0,0,0,0
-scrlines 	!word 1024,1064,1104,1144,1184,1224,1264,1304 ;begining of the 8 firsts screen lines
+scrlines 	!word 1024,1064,1104,1144,1184,1224,1264,1304,1024 ;begining of the 8 firsts screen lines. Last one is to avoid off by one:/
+mask 		!byte 128,64,32,16,8,4,2,1				;bit mask for setting dot
+mask2		!byte 127,191,223,239,247,251,253,254 ;bit mask to clear
 row		!byte 0			;which row is being drawn
 cx		!byte 0			; position of cursor in row/col
 cy 		!byte 0
 dcx		!byte 0			;old values of cursor
 dcy		!byte 0
-usage		!pet "it is a char editor"
-		!byte 0
+usage		!pet "it is a char editor",0
+ccx		!pet "cx ",0
+ccy		!pet "cy ",0
+cdx		!pet "dx ",0
+cdy		!pet "dy ",0
 status		!byte 0
