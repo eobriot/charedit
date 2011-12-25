@@ -1,3 +1,4 @@
+; vim: syntax=acme
 	type = 64
 
 	* = $c000
@@ -96,7 +97,25 @@ out:	sta 1024,x
 	lda #>usage
 	sta wrk2
 	jsr prtmsg
-	ldx #11			;debug : show coordinates of cursor
+	ldx #11
+	ldy #0
+	clc
+	jsr plot
+   lda #<usage2
+	sta wrk1
+	lda #>usage2
+	sta wrk2
+	jsr prtmsg
+   ldx #12
+	ldy #0
+	clc
+	jsr plot
+   lda #<usage3
+	sta wrk1
+	lda #>usage3
+	sta wrk2
+	jsr prtmsg
+	ldx #13			;debug : show coordinates of cursor
 	ldy #0
 	jsr plot
 	lda #<ccx		;cx
@@ -111,7 +130,7 @@ out:	sta 1024,x
 	lda #>ccy
 	sta wrk2
 	jsr prtmsg
-	ldx #12			;dx
+	ldx #14			;dx
 	ldy #0
 	jsr plot
 	lda #<cdx
@@ -234,6 +253,7 @@ mark:
 	jsr cvrt		; in wrk3 we have the value of the line in hexa
 	ldx cy
 	ldy #10
+   clc         ; don't ever forget to clc before plotting if you want to move the cursor!
 	jsr plot
 	lda wrk3		;print high nibble
 	ror
@@ -285,22 +305,22 @@ dspcsr:
 
 	;; we print the coordinates
 prtcrd:	
-	ldx #11			;cx
+	ldx #13			;cx
 	ldy #4
 	jsr plot
 	lda cx
 	jsr prtdgt
-	ldx #11
+	ldx #13
 	ldy #9			;cy
 	jsr plot
 	lda cy
 	jsr prtdgt
-	ldx #12			;dx
+	ldx #14			;dx
 	ldy #4
 	jsr plot
 	lda dcx
 	jsr prtdgt
-	ldx #12
+	ldx #14
 	ldy #9			;dy
 	jsr plot
 	lda dcy
@@ -308,7 +328,7 @@ prtcrd:
 	rts
 ;;; This routine converts a row of dot to a 8 bits numbers
 ;;; in entry A holds the line of pattern to convert
-cvrt
+cvrt:
 	clc
 	rol			;*2 for index to 16 bits table
 	tax
@@ -318,6 +338,7 @@ cvrt
 	lda scrlines,x
 	sta wrk2		;now in wrk we have the adress of screen line
 	ldy #nbcol
+;   iny
 -	lda (wrk1),y		;first char
 	and #$7f		;take care of eventual cursor at position
 	clc
@@ -331,8 +352,11 @@ cvrt
 	lda wrk3		;should clear the value ...
 	and mask2,y
 	sta wrk3
-+	dey
-	bne -			;last col? (in fact first as we are going in reverse)
++  dey
+			;last col? (in fact first as we are going in reverse)
+  ; bne -
+	cpy #$ff
+   bne -
 	lda wrk3
 	rts
 	
@@ -346,7 +370,9 @@ cx		!byte 0			; position of cursor in row/col
 cy 		!byte 0
 dcx		!byte 0			;old values of cursor
 dcy		!byte 0
-usage		!pet "it is a char editor",0
+usage	   !pet "it is a char editor",0
+usage2	!pet "crsr to move, space to plot",0
+usage3   !pet "q to quit",0
 ccx		!pet "cx ",0
 ccy		!pet "cy ",0
 cdx		!pet "dx ",0
