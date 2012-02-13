@@ -19,7 +19,10 @@
 	nbcol	= 7
 	nbrow	= 7
 	
-main:	jsr clrscr
+main:
+
+	jsr clrscr
+   jsr cpychr
 	jsr stpscrn
 .loop:
 	jsr crsor
@@ -34,6 +37,68 @@ main:	jsr clrscr
 	sta dcy
 	sta dcx
 	rts
+
+;;; routine to copy char rom 
+cpychr	:
+   pha
+;;; turns interrupts off
+	lda $dc0e
+	and #254
+	sta $dc0e
+   sei
+;;;switch out i/o
+	lda $1
+	and #251
+	sta $1
+;;;let's do the copy
+	ldx #0
+cpyl1:	
+	lda $d000,x
+	sta $3000,x
+	lda $d100,x
+	sta $3100,x
+	lda $d200,x
+	sta $3200,x
+	lda $d300,x
+	sta $3300,x
+	lda $d400,x
+	sta $3400,x
+	lda $d500,x
+	sta $3500,x
+	lda $d600,x
+	sta $3600,x
+	lda $d700,x
+	sta $3700,x
+	lda $D800,x
+	sta $3800,x
+	lda $d900,x
+	sta $3900,x
+	lda $da00,x
+	sta $3a00,x
+	lda $db00,x
+	sta $3b00,x
+	lda $dc00,x
+	sta $3c00,x
+	lda $dd00,x
+	sta $3d00,x
+	lda $de00,x
+	sta $3e00,x
+	lda $df00,x
+   sta $3f00,x
+	dex
+	bne cpyl1
+;;;pfiou, copy is done
+;;;switch on i/o
+	lda $1
+	ora #4
+   sta $1
+;;;turn interrupts on
+	lda $dc0e
+	ora #1
+	sta $dc0e
+   cli
+	pla
+	rts   
 
 ;;; routine to clear screen
 clrscr:	lda #$93
@@ -115,6 +180,15 @@ out:	sta 1024,x
 	lda #>usage3
 	sta wrk2
 	jsr prtmsg
+	ldx #13
+	ldy #0
+	clc
+	jsr plot
+	lda #<usage4
+	sta wrk1
+	lda #>usage4
+	sta wrk2
+   jsr prtmsg
 	ldx #13			;debug : show coordinates of cursor
 	ldy #0
 	jsr plot
@@ -122,14 +196,14 @@ out:	sta 1024,x
 	sta wrk1
 	lda #>ccx
 	sta wrk2
-	jsr prtmsg
+;	jsr prtmsg
 	ldy #6			;cy
 	jsr plot
 	lda #<ccy
 	sta wrk1
 	lda #>ccy
 	sta wrk2
-	jsr prtmsg
+;	jsr prtmsg
 	ldx #14			;dx
 	ldy #0
 	jsr plot
@@ -137,14 +211,14 @@ out:	sta 1024,x
 	sta wrk1
 	lda #>cdx
 	sta wrk2
-	jsr prtmsg
+;	jsr prtmsg
 	ldy #6			;dy
 	jsr plot
 	lda #<cdy
 	sta wrk1
 	lda #>cdy
 	sta wrk2
-	jsr prtmsg
+;	jsr prtmsg
 	rts
 	
 ;;; routine to handle cursor movement and display
@@ -161,14 +235,16 @@ crsor:
 	beq .down
 	cmp #29			;right key
 	beq .right
-	cmp #145		;down key
+	cmp #145 		;down key
 	beq .up
-	cmp #157		;left key
+	cmp #157	   	;left key
 	beq .left
 	cmp #32			;space?
 	beq .space
 	cmp #81			;quit?
 	beq .quit
+	cmp #83
+   beq .save      ;save
 	jmp .wait
 .up:
 	lda cy
@@ -207,11 +283,47 @@ crsor:
 .quit:
 	lda #$ff
 	sta status
+   jmp .end
+.save:
+	jsr save
+   jmp .end
 .end:
 	jsr dspcsr
-	jsr prtcrd
+;	jsr prtcrd
 	rts
 
+save:
+	ldx #24
+	ldy #0
+	clc
+	jsr plot
+	lda #<savemsg
+	sta wrk1
+	lda #>savemsg
+	sta wrk2
+   jsr prtmsg
+.svwait:
+	jsr getin
+	cmp #48        ; a < 48 (asc 0)?
+	bcc .svloop
+	cmp #58        ; a < 58 (asc 9 + 1)?
+	bcc .valid  
+	cmp #71        ; a > 70 (asc F)?
+	bcs .svloop
+	cmp #65
+	bcc .svloop    ; a < 65 (asc 0)
+   jmp .valid
+.svloop:
+	jmp .svwait
+.valid:
+   pha
+	ldx #24
+	ldy #20
+	clc
+	jsr plot
+   pla
+   jsr chrout     ; debug : print the valid char  
+   rts
 ;;; Routine to print a half byte in hexa mode
 ;;; Half byte is in a
 ;;; print to current cursor position
@@ -373,6 +485,8 @@ dcy		!byte 0
 usage	   !pet "it is a char editor",0
 usage2	!pet "crsr to move, space to plot",0
 usage3   !pet "q to quit",0
+usage4	!pet "s to save char in memory",0
+savemsg  !pet "enter char number in hex (00-ff)",0
 ccx		!pet "cx ",0
 ccy		!pet "cy ",0
 cdx		!pet "dx ",0
