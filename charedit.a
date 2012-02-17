@@ -286,11 +286,29 @@ crsor:
    jmp .end
 .save:
 	jsr save
+   jsr stpscrn
    jmp .end
 .end:
 	jsr dspcsr
 ;	jsr prtcrd
 	rts
+
+gtvalidchr:
+.svwait:
+	jsr getin
+	cmp #48        ; a < 48 (asc 0)?
+	bcc .svloop
+	cmp #58        ; a < 58 (asc 9 + 1)?
+	bcc .valid  
+	cmp #71        ; a > 70 (asc F)?
+	bcs .svloop
+	cmp #65
+	bcc .svloop    ; a < 65 (asc A)
+   jmp .valid
+.svloop:
+	jmp .svwait
+.valid:
+   rts
 
 save:
 	ldx #24
@@ -302,27 +320,94 @@ save:
 	lda #>savemsg
 	sta wrk2
    jsr prtmsg
-.svwait:
-	jsr getin
-	cmp #48        ; a < 48 (asc 0)?
-	bcc .svloop
-	cmp #58        ; a < 58 (asc 9 + 1)?
-	bcc .valid  
-	cmp #71        ; a > 70 (asc F)?
-	bcs .svloop
-	cmp #65
-	bcc .svloop    ; a < 65 (asc 0)
-   jmp .valid
-.svloop:
-	jmp .svwait
-.valid:
+;.svwait:
+;	jsr getin
+;	cmp #48        ; a < 48 (asc 0)?
+;	bcc .svloop
+;	cmp #58        ; a < 58 (asc 9 + 1)?
+;	bcc .valid  
+;	cmp #71        ; a > 70 (asc F)?
+;	bcs .svloop
+;	cmp #65
+;	bcc .svloop    ; a < 65 (asc A)
+;   jmp .valid
+;.svloop:
+;	jmp .svwait
+;.valid:
+   jsr gtvalidchr ; get first char of adress
    pha
 	ldx #24
-	ldy #20
+	ldy #33
 	clc
 	jsr plot
    pla
    jsr chrout     ; debug : print the valid char  
+	jsr cvrtdgt
+	asl            ; convert to high nibble
+	asl
+	asl
+	asl
+	sta wrk1
+	jsr gtvalidchr ; get second char
+	pha 
+	ldx #24
+	ldy #34
+	clc 
+	jsr plot
+	pla
+	jsr chrout
+	jsr cvrtdgt
+   ora wrk1       ; merge the two nibbles, now in A we have the char to replace
+	pha            ; protectresult then blank last line
+	ldx #24
+	ldy #0
+	clc
+	jsr plot
+   jsr blank
+	ldx #24
+	ldy #0
+	clc
+	jsr plot
+	lda #<okmsg
+	sta wrk1
+	lda #>okmsg
+	sta wrk2
+	jsr prtmsg
+   jsr wait       ; wait
+	lda #24
+	ldy #0
+	clc
+   jsr plot
+   jsr blank
+   pla            ; get back the result
+dbg:
+   rts
+
+;;; blank the line at current cursor pos
+blank:
+   lda #<blankln
+	sta wrk1
+	lda #>blankln
+	sta wrk2
+	jsr prtmsg
+	rts
+
+;;; routine to convert a char to an integer
+;;; char to convert is in a, returns integer in a
+cvrtdgt:
+	cmp #58
+	bcc .digit
+	cmp #71
+	bcc .letter
+	and #0
+	jmp .endcvrt
+.digit:
+	sbc #47
+	jmp .endcvrt
+.letter:
+	sbc #54
+   jmp .endcvrt
+.endcvrt:
    rts
 ;;; Routine to print a half byte in hexa mode
 ;;; Half byte is in a
@@ -473,22 +558,25 @@ cvrt:
 	rts
 	
 ;;; vars
-chrptn		!byte $4,0,$ff,0,0,0,0,0
-scrlines 	!word 1024,1064,1104,1144,1184,1224,1264,1304,1024 ;begining of the 8 firsts screen lines. Last one is to avoid off by one:/
-mask 		!byte 128,64,32,16,8,4,2,1				;bit mask for setting dot
-mask2		!byte 127,191,223,239,247,251,253,254 ;bit mask to clear
-row		!byte 0			;which row is being drawn
-cx		!byte 0			; position of cursor in row/col
+chrptn	!byte $4,0,$ff,0,0,0,0,0
+scrlines	!word 1024,1064,1104,1144,1184,1224,1264,1304,1024 ;begining of the 8 firsts screen lines. Last one is to avoid off by one:/
+mask 		!byte 128,64,32,16,8,4,2,1		               		;bit mask for setting dot
+mask2		!byte 127,191,223,239,247,251,253,254              ;bit mask to clear
+row		!byte 0	                                    		;which row is being drawn
+cx	   	!byte 0		                                    	; position of cursor in row/col
 cy 		!byte 0
-dcx		!byte 0			;old values of cursor
+dcx		!byte 0                                   			;old values of cursor
 dcy		!byte 0
 usage	   !pet "it is a char editor",0
 usage2	!pet "crsr to move, space to plot",0
 usage3   !pet "q to quit",0
 usage4	!pet "s to save char in memory",0
 savemsg  !pet "enter char number in hex (00-ff)",0
+okmsg    !pet "ok.",0
+blankln	!fill 39, 32
+         !by 0
 ccx		!pet "cx ",0
 ccy		!pet "cy ",0
 cdx		!pet "dx ",0
 cdy		!pet "dy ",0
-status		!byte 0
+status	!byte 0
